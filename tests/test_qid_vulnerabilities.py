@@ -496,6 +496,15 @@ def test_empty_detection_response_is_a_valid_empty_result() -> None:
     assert listing.matched_asset_count == 0
 
 
+def test_qualys_doctype_is_allowed_without_entity_definitions() -> None:
+    payload = b'''<!DOCTYPE HOST_LIST_VM_DETECTION_OUTPUT SYSTEM "qualys.dtd">
+    <HOST_LIST_VM_DETECTION_OUTPUT><RESPONSE /></HOST_LIST_VM_DETECTION_OUTPUT>'''
+
+    listing = QidVulnerabilityListing.from_api_xml(payload, requested_qid=12345)
+
+    assert listing.vulnerabilities == ()
+
+
 def test_listing_surfaces_qualys_xml_error_response() -> None:
     payload = b"""\
     <SIMPLE_RETURN>

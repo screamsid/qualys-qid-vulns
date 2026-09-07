@@ -14,6 +14,9 @@ def fromstring(payload: bytes) -> ElementTree.Element:
     if len(document) > MAX_XML_BYTES:
         raise ValueError("XML response exceeded the maximum permitted size")
     upper = document.upper()
-    if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
-        raise ValueError("XML response contained a prohibited declaration")
+    # Qualys legitimately includes a DOCTYPE in some responses. ElementTree
+    # does not fetch external DTDs, so permit that declaration but reject
+    # entity definitions, which enable expansion attacks.
+    if b"<!ENTITY" in upper:
+        raise ValueError("XML response contained a prohibited entity declaration")
     return ElementTree.fromstring(document)
