@@ -31,7 +31,7 @@ from qualys_qid_vulnerabilities.models import (
     QidVulnerabilityListing,
     QidVulnerabilityRecord,
 )
-from qualys_qid_vulnerabilities.host_list import parse_host_list
+from qualys_qid_vulnerabilities.host_list import HostAsset, parse_host_list
 from qualys_qid_vulnerabilities.progress import ProgressDisplay
 from qualys_qid_vulnerabilities import logging_setup
 from qualys_qid_vulnerabilities.logging_setup import (
@@ -102,6 +102,27 @@ def test_asset_search_matches_asset_id_and_dns_values_case_insensitively() -> No
     )
     assert not AssetSearch.parse(asset_ids=None, hostnames="missing.test").matches(
         asset_id=assets[0].asset_id, hostnames=assets[0].hostnames
+    )
+
+
+def test_host_list_parser_accepts_qualys_lowercase_element_names() -> None:
+    payload = b"""\
+    <host_list_output><response><host_list>
+      <host><id>101</id><asset_id>100001</asset_id><ip>192.0.2.10</ip>
+        <dns>MSL-S-SW4.</dns>
+        <dns_data><hostname>msl-s-sw4</hostname><fqdn>msl-s-sw4.example.test</fqdn></dns_data>
+      </host>
+    </host_list></response></host_list_output>
+    """
+
+    assets = parse_host_list(payload)
+
+    assert assets == (
+        HostAsset(
+            asset_id="100001",
+            ip_address="192.0.2.10",
+            hostnames=("MSL-S-SW4.", "msl-s-sw4", "msl-s-sw4.example.test"),
+        ),
     )
 
 HOST_WITHOUT_QID_XML = b"""\

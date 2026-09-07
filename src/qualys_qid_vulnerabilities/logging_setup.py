@@ -14,9 +14,19 @@ import textwrap
 LOGGER_NAME = "qualys_qid_vulnerabilities"
 MAX_LOG_BYTES = 5 * 1024 * 1024
 LOG_BACKUP_COUNT = 3
-PROJECT_ROOT = Path(
-    os.environ.get("QID_PROJECT_ROOT", Path(__file__).resolve().parents[2])
-).expanduser().resolve()
+_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+_CALLER_ROOT = Path.cwd().resolve()
+_EXPLICIT_ROOT = os.environ.get("QID_PROJECT_ROOT")
+PROJECT_ROOT = (
+    Path(_EXPLICIT_ROOT).expanduser().resolve()
+    if _EXPLICIT_ROOT
+    else (
+        _CALLER_ROOT
+        if (_CALLER_ROOT / "config" / "runtime.toml").is_file()
+        and (_CALLER_ROOT / ".env").is_file()
+        else _PACKAGE_ROOT
+    )
+)
 DEFAULT_LOG_DIR = PROJECT_ROOT / "logs"
 DEFAULT_LOG_FILE = DEFAULT_LOG_DIR / "qid.log"
 _FORMAT = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"

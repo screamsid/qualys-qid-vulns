@@ -138,7 +138,8 @@ Asset and hostname selectors first perform a read-only Qualys Host List lookup,
 then query detections using only the exact IPs returned for matching assets.
 Hostname matching is exact and case-insensitive, with a trailing dot ignored;
 the tool does not perform local DNS resolution. `--ips`, `--asset-ids`, and
-`--dns-hostnames` are mutually exclusive.
+`--dns-hostnames` are mutually exclusive. `--host` is accepted as a short
+alias for `--hostname`.
 
 Verify ignored state without changing Qualys:
 

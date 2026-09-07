@@ -30,12 +30,23 @@ DEFAULT_CONFIG = {
     },
 }
 
-# The installer sets QID_PROJECT_ROOT in the launcher. This keeps the runtime
-# files beside the installed copy even though Python imports the package from
-# its private virtual environment.
-PROJECT_ROOT = Path(
-    os.environ.get("QID_PROJECT_ROOT", Path(__file__).resolve().parents[2])
-).expanduser().resolve()
+# The installer sets QID_PROJECT_ROOT in the launcher. For a pipx console
+# script installed directly from a checkout, use that checkout when the
+# caller is in a directory containing the project's runtime files. Do not
+# blindly load a .env from an arbitrary working directory.
+_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+_CALLER_ROOT = Path.cwd().resolve()
+_EXPLICIT_ROOT = os.environ.get("QID_PROJECT_ROOT")
+PROJECT_ROOT = (
+    Path(_EXPLICIT_ROOT).expanduser().resolve()
+    if _EXPLICIT_ROOT
+    else (
+        _CALLER_ROOT
+        if (_CALLER_ROOT / "config" / "runtime.toml").is_file()
+        and (_CALLER_ROOT / ".env").is_file()
+        else _PACKAGE_ROOT
+    )
+)
 DEFAULT_CONFIG_FILE = PROJECT_ROOT / "config" / "runtime.toml"
 DEFAULT_ENV_FILE = PROJECT_ROOT / ".env"
 

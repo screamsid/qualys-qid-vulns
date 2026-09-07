@@ -26,33 +26,55 @@ def parse_host_list(payload: bytes) -> tuple[HostAsset, ...]:
     except ElementTree.ParseError as exc:
         raise QualysResponseError("Qualys host list response was not valid XML") from exc
 
-    response = root.find("RESPONSE")
+    # Qualys has returned this XML with different element casing across API
+    # versions/tenants. XML names are case-sensitive, so do not assume the
+    # upper-case spelling used by some older examples and fixtures.
+    response = _find_child(root, "response")
     if response is None:
         raise QualysResponseError("Qualys host list response did not include RESPONSE")
-    host_list = response.find("HOST_LIST")
+    host_list = _find_child(response, "host_list")
     if host_list is None:
         return ()
 
     assets: list[HostAsset] = []
-    for host in host_list.findall("HOST"):
-        asset_id = _text(host, "ASSET_ID")
+    for host in _find_children(host_list, "host"):
+        asset_id = _text(host, "asset_id")
         if not asset_id:
             raise QualysResponseError("Qualys host list record did not include an asset ID")
+        dns_data = _find_child(host, "dns_data")
         hostnames = tuple(
             value
             for value in (
-                _text(host, "DNS"),
-                _text(host.find("DNS_DATA"), "HOSTNAME") if host.find("DNS_DATA") is not None else None,
-                _text(host.find("DNS_DATA"), "FQDN") if host.find("DNS_DATA") is not None else None,
+                _text(host, "dns"),
+                _text(dns_data, "hostname"),
+                _text(dns_data, "fqdn"),
             )
             if value
         )
-        assets.append(HostAsset(asset_id, _text(host, "IP"), hostnames))
+        assets.append(HostAsset(asset_id, _text(host, "ip"), hostnames))
     return tuple(assets)
 
 
 def _text(parent: ElementTree.Element | None, name: str) -> str | None:
     if parent is None:
         return None
-    value = parent.findtext(name)
+    child = _find_child(parent, name)
+    value = child.text if child is not None else None
     return value.strip() if value and value.strip() else None
+
+
+def _find_child(parent: ElementTree.Element, name: str) -> ElementTree.Element | None:
+    expected = name.casefold()
+    return next(
+        (child for child in parent if _local_name(child.tag).casefold() == expected),
+        None,
+    )
+
+
+def _find_children(parent: ElementTree.Element, name: str) -> tuple[ElementTree.Element, ...]:
+    expected = name.casefold()
+    return tuple(child for child in parent if _local_name(child.tag).casefold() == expected)
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
