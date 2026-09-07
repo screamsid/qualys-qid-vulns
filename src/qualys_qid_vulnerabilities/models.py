@@ -120,6 +120,11 @@ class QidVulnerabilityListing:
         *,
         requested_qid: int | None,
     ) -> "QidVulnerabilityListing":
+        # Qualys can return an empty body for a valid empty detection result.
+        # Treat that as no findings; an empty ignore response is still handled
+        # strictly below because a write outcome must never be assumed.
+        if not payload.strip():
+            return cls(vulnerabilities=())
         try:
             root = fromstring(payload)
         except ValueError as exc:

@@ -489,6 +489,13 @@ def test_listing_parses_detection_fields_and_counts_unique_assets() -> None:
     assert listing.vulnerabilities[2].vulnerability_id is None
 
 
+def test_empty_detection_response_is_a_valid_empty_result() -> None:
+    listing = QidVulnerabilityListing.from_api_xml(b"", requested_qid=12345)
+
+    assert listing.vulnerabilities == ()
+    assert listing.matched_asset_count == 0
+
+
 def test_listing_surfaces_qualys_xml_error_response() -> None:
     payload = b"""\
     <SIMPLE_RETURN>

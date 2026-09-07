@@ -17,6 +17,8 @@ class HostAsset:
 
 
 def parse_host_list(payload: bytes) -> tuple[HostAsset, ...]:
+    if not payload.strip():
+        return ()
     try:
         root = fromstring(payload)
     except ValueError as exc:
