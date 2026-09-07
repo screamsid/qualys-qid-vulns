@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qualys-qid-vulnerabilities"
-version = "0.1.0"
+version = "0.2.0"
 description = "Qualys host vulnerability detection lookup and explicitly confirmed QID ignore tool."
 requires-python = ">=3.12"
 dependencies = []

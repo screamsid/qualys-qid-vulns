@@ -37,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
               qid 12345 --hostname "server-one.example.test" --verify-ignored
               qid 12345 --asset-id 100001 --ignore --comment "Approved exception"
               qid logs
+              qid update
 
             notes:
               Omit QID to list all returned QIDs for a selected device; an
@@ -46,6 +47,8 @@ def build_parser() -> argparse.ArgumentParser:
               Run `qid QID --ignore ...` only after reviewing the preflight.
               Use `qid --help` or `qid ?` to show this help.
               Use `qid logs` to display the private command log.
+              Use `qid update` to explicitly update a pipx installation;
+              standalone installs are updated by rerunning install.sh.
 
             manual:
               Open directly with: qid --man

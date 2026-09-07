@@ -51,6 +51,18 @@ Display the command log without needing to locate the log file:
 qid logs
 ```
 
+Explicitly update a pipx installation from its configured package source:
+
+```bash
+qid update
+```
+
+The command asks for confirmation, displays the installed version, and uses
+`pipx upgrade`. It never updates automatically during normal lookups. Use
+`qid update --yes` for a scripted update. Standalone installations created by
+`install.sh` are updated by rerunning that installer from a trusted source
+checkout; `qid update` refuses to run against those installations.
+
 To display a log written to a custom path, use `qid logs --log-file PATH`.
 
 Set `QUALYS_BASE_URL` to the gateway for your Qualys service region, then set

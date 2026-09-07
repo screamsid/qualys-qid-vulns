@@ -151,6 +151,13 @@ Open the bundled manual page using the system \fBman\fR command.
 .TP
 .B ?
 Show command help, equivalent to invoking \fBqid \-\-help\fR.
+.TP
+.B qid update
+Ask for confirmation, then update a pipx installation with
+\fBpipx upgrade qualys-qid-vulnerabilities\fR. This command never runs
+automatically. Use \fBqid update \-\-yes\fR for scripted use. Standalone
+installations must be updated by rerunning \fBinstall.sh\fR from a trusted
+source checkout.
 .SH EXAMPLES
 .EX
 qid 12345 --ips "192.0.2.10-192.0.2.20"

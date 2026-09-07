@@ -12,7 +12,7 @@ from . import logging_setup
 from .client import QidVulnerabilityClient
 from .commands import _ip_in_filter, confirm_ignore, run
 from .config import AppConfig
-from .diagnostics import open_manual, show_logs
+from .diagnostics import open_manual, show_logs, update
 from .ignore import IgnoreVulnerabilityRequest
 from .ip_filter import IpFilter
 from .output import (
@@ -46,6 +46,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return open_manual(run=subprocess.run)
     if arguments and arguments[0] == "logs":
         return show_logs(arguments[1:])
+    if arguments and arguments[0] == "update":
+        return update(arguments=arguments[1:])
     try:
         args = parser.parse_args(arguments)
     except KeyboardInterrupt:
