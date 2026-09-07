@@ -77,6 +77,22 @@ def build_parser() -> argparse.ArgumentParser:
     runtime.add_argument("--env-file", metavar="PATH", help="Use an alternate local environment file")
     runtime.add_argument("-v", "--verbose", action="store_true", help="Show request and response diagnostics on stderr")
     runtime.add_argument("--log-file", metavar="PATH", help="Write diagnostics to PATH (rotates at 5 MiB; 3 backups)")
+    output = parser.add_argument_group("automation and reporting")
+    output.add_argument("--format", choices=("table", "json", "csv"), default="table", help="Output format (default: table)")
+    output.add_argument("--output", metavar="PATH", help="Write machine-readable output or evidence to PATH")
+    output.add_argument("--evidence-file", metavar="PATH", help="Write a redacted JSON evidence record to PATH")
+    output.add_argument("--summary", action="store_true", help="Show grouped counts instead of detailed rows")
+    output.add_argument("--group-by", choices=("qid", "status", "asset", "ignored"), help="Group summary rows by this field")
+    output.add_argument("--plan", action="store_true", help="Show an ignore plan without prompting or changing Qualys")
+    output.add_argument("--verify-after-ignore", action="store_true", help="Verify ignored state after a successful ignore request")
+    output.add_argument("--fail-if-found", action="store_true", help="Return exit code 2 when findings are returned")
+    output.add_argument("--fail-if-not-ignored", action="store_true", help="Return exit code 2 when any returned detection is not ignored")
+    output.add_argument("--stale-after-days", type=_positive_days, metavar="DAYS", help="Flag evidence files older than DAYS when reviewing exported evidence")
+    batch = parser.add_argument_group("batch input")
+    batch.add_argument("--qids-file", metavar="PATH", help="Read one positive QID per line")
+    batch.add_argument("--ips-file", metavar="PATH", help="Read comma-separated IP filters from a file")
+    batch.add_argument("--asset-ids-file", metavar="PATH", help="Read comma-separated Asset IDs from a file")
+    batch.add_argument("--dns-hostnames-file", metavar="PATH", help="Read comma-separated DNS names/hostnames from a file")
     return parser
 
 
@@ -103,6 +119,29 @@ def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         parser.error("--comment may only be used with --ignore")
     if args.reopen_after_days is not None and not args.ignore:
         parser.error("--reopen-after-days may only be used with --ignore")
+    if args.plan and not args.ignore:
+        parser.error("--plan requires --ignore")
+    if args.fail_if_not_ignored and not args.verify_ignored:
+        parser.error("--fail-if-not-ignored requires --verify-ignored")
+    if args.fail_if_found and args.ignore:
+        parser.error("--fail-if-found cannot be combined with --ignore")
+    if args.group_by and not args.summary:
+        parser.error("--group-by requires --summary")
+    if args.stale_after_days is not None and not args.evidence_file:
+        parser.error("--stale-after-days requires --evidence-file")
+    if args.output and args.evidence_file:
+        parser.error("--output and --evidence-file may not be combined")
+    if args.ignore and args.format != "table" and not args.output:
+        parser.error("machine-readable ignore output requires --output PATH")
+    file_selectors = [args.ips_file, args.asset_ids_file, args.dns_hostnames_file]
+    if sum(value is not None for value in file_selectors) > 1:
+        parser.error("batch selector files are mutually exclusive")
+    if any(file_selectors) and any((args.ips, args.asset_ids, args.dns_hostnames)):
+        parser.error("a batch selector file may not be combined with a selector option")
+    if args.qids_file and args.qid is not None:
+        parser.error("--qids-file may not be combined with a positional QID")
+    if args.qids_file and args.ignore:
+        parser.error("--qids-file cannot be used with --ignore; review and ignore one QID at a time")
     return search
 
 
@@ -137,4 +176,14 @@ def _reopen_after_days(value: str) -> int:
         raise argparse.ArgumentTypeError("--reopen-after-days must be an integer from 1 to 730") from exc
     if not 1 <= days <= 730:
         raise argparse.ArgumentTypeError("--reopen-after-days must be an integer from 1 to 730")
+    return days
+
+
+def _positive_days(value: str) -> int:
+    try:
+        days = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("days must be a positive integer") from exc
+    if days <= 0:
+        raise argparse.ArgumentTypeError("days must be a positive integer")
     return days

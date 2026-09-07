@@ -76,6 +76,50 @@ Required audit comment for \fB\-\-ignore\fR; maximum 255 characters.
 Automatically reopen after 1 to 730 days. Valid only with \fB\-\-ignore\fR.
 If omitted, the existing indefinite-ignore behavior is retained.
 .TP
+.BI \-\-format\ FORMAT
+Use \fBtable\fR (default), \fBjson\fR, or \fBcsv\fR output.
+.TP
+.BI \-\-output\ PATH
+Write formatted output to PATH.
+.TP
+.BI \-\-summary
+Show grouped counts instead of detailed detection rows. Use
+\fB\-\-group-by\fR with \fBqid\fR, \fBstatus\fR, \fBasset\fR, or \fBignored\fR.
+.TP
+.BI \-\-evidence-file\ PATH
+Write a redacted JSON evidence record with scope, timestamp, assets, and
+detections. It contains no credentials or request bodies.
+.TP
+.BI \-\-plan
+With \fB\-\-ignore\fR, display the exact planned write without prompting or
+changing Qualys.
+.TP
+.BI \-\-verify-after-ignore
+Perform a read-only ignored-state verification after a successful ignore.
+.TP
+.BI \-\-fail-if-found
+Return status 2 when a read-only lookup returns detections.
+.TP
+.BI \-\-fail-if-not-ignored
+With \fB\-\-verify-ignored\fR, return status 2 when a returned detection is
+not confirmed ignored.
+.TP
+.BI \-\-stale-after-days\ DAYS
+With an evidence file, report status 2 when the existing evidence is older
+than DAYS before refreshing it.
+.TP
+.BI \-\-qids-file\ PATH
+Read one positive QID per line for read-only batch lookup.
+.TP
+.BI \-\-ips-file\ PATH
+Read one IP filter per line for a read-only batch selector.
+.TP
+.BI \-\-asset-ids-file\ PATH
+Read Asset IDs from a read-only batch selector file.
+.TP
+.BI \-\-dns-hostnames-file\ PATH
+Read DNS names/hostnames from a read-only batch selector file.
+.TP
 .BI \-\-config-file\ PATH
 Use an alternate runtime TOML configuration file.
 .TP
@@ -128,6 +172,14 @@ qid 12345 --verify-ignored --ignored-only
 qid 12345 --ips "192.0.2.10" --ignore \\
   --reopen-after-days 30 --comment "Temporary vulnerability exception"
 .EE
+.PP
+.EX
+qid 12345 --format json --output finding.json --summary --group-by status
+.EE
+.PP
+.EX
+qid 12345 --asset-id 100001 --ignore --comment "Approved exception" --plan
+.EE
 .SH FILES
 .TP
 .I config/runtime.toml
@@ -166,6 +218,10 @@ The command completed, including a valid empty result.
 .TP
 .B 1
 Configuration, validation, transport, or Qualys request error.
+.TP
+.B 2
+The requested automation condition was met, such as findings being present,
+an unignored detection being found, or stale evidence being detected.
 .SH SECURITY
 Credentials are read from environment variables or the local environment file
 and should not be supplied as command-line arguments. Normal operation is

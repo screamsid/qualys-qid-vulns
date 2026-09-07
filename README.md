@@ -167,6 +167,53 @@ confirmation. Omitting `--reopen-after-days` preserves the existing
 indefinite-ignore behavior. Ranges are validated locally without being
 expanded before the Qualys request.
 
+## Automation and reporting
+
+Results can be exported without changing the default terminal table:
+
+```bash
+qid 12345 --asset-id 100001 --format json --output finding.json
+qid 12345 --format csv --output findings.csv
+qid 12345 --summary --group-by status
+```
+
+`--summary` reports counts; `--group-by` accepts `qid`, `status`, `asset`, or
+`ignored`. `--evidence-file PATH` writes a redacted JSON record containing the
+scope, timestamp, matched assets, and returned detections. It contains no
+credentials or request bodies. Use `--stale-after-days N` with an existing
+evidence file to return exit code 2 when the previous evidence is older than
+the threshold; the file is then refreshed with the current read-only result.
+
+For automation, `--fail-if-found` returns exit code 2 when a read-only lookup
+finds detections. With `--verify-ignored`, `--fail-if-not-ignored` returns 2
+when any returned detection is not confirmed ignored. Other failures retain
+the existing non-zero error codes.
+
+Before an ignore, use plan mode to see the exact write scope without a prompt
+or Qualys change:
+
+```bash
+qid 12345 --hostname server-one.example.test --ignore \
+  --comment "Approved exception" --plan
+```
+
+After a confirmed write, `--verify-after-ignore` performs a read-only
+verification and reports any exact asset IPs whose ignored state was not
+confirmed. If the command is interrupted or a batch fails, continue to use
+the existing warning and verify before retrying.
+
+Batch files accept one value per line, with blank lines and lines beginning
+with `#` ignored:
+
+```bash
+qid --qids-file qids.txt --asset-ids-file asset-ids.txt
+qid 12345 --ips-file ip-filters.txt
+```
+
+Batch QID mode is intentionally limited to read-only table output so that
+each result remains easy to review. Ignore operations still require one QID,
+an explicit selector, an audit comment, and the existing exact confirmation.
+
 ## Configuration
 
 By default, the tool reads `config/runtime.toml` and `.env` from the installed

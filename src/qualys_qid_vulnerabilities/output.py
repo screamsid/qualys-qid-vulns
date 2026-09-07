@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import os
+import csv
+import io
+import json
 import shutil
 import sys
 import textwrap
+from datetime import datetime, timezone
+from pathlib import Path
 
 from .ip_filter import IpFilter
 from .models import QidVulnerabilityListing
@@ -28,6 +33,89 @@ def safe_log_output(value: str) -> str:
 def format_table(listing: QidVulnerabilityListing) -> str:
     rows = [(safe_output(r.asset_id), r.ip_address, safe_output(r.dns_hostname or "-"), str(r.qid), safe_output(r.status), safe_output(r.vulnerability_id or "-")) for r in listing.vulnerabilities]
     return format_responsive_table(HEADERS, rows)
+
+
+def listing_rows(listing: QidVulnerabilityListing) -> list[dict[str, object]]:
+    return [{
+        "asset_id": record.asset_id,
+        "ip_address": record.ip_address,
+        "dns_hostname": record.dns_hostname,
+        "qid": record.qid,
+        "status": record.status,
+        "vulnerability_id": record.vulnerability_id,
+        "ignored": record.ignored,
+        "ignored_state": record.ignored_state,
+    } for record in listing.vulnerabilities]
+
+
+def summary_rows(listing: QidVulnerabilityListing, group_by: str | None) -> list[dict[str, object]]:
+    rows = listing_rows(listing)
+    if not group_by:
+        return [{"assets_matched": listing.matched_asset_count,
+                 "assets_affected": listing.affected_asset_count,
+                 "detections": len(listing.vulnerabilities),
+                 "ignored_assets": listing.confirmed_ignored_asset_count,
+                 "not_ignored_assets": listing.not_ignored_asset_count,
+                 "unknown_ignore_assets": listing.unknown_ignore_state_asset_count}]
+    values = {"qid": lambda row: row["qid"], "status": lambda row: row["status"],
+              "asset": lambda row: row["asset_id"], "ignored": lambda row: row["ignored_state"]}
+    grouped: dict[object, list[dict[str, object]]] = {}
+    for row in rows:
+        grouped.setdefault(values[group_by](row), []).append(row)
+    return [{"group": key, "detections": len(items),
+             "assets": len({item["asset_id"] for item in items})}
+            for key, items in sorted(grouped.items(), key=lambda item: str(item[0]))]
+
+
+def format_json(listing: QidVulnerabilityListing, *, summary: bool = False, group_by: str | None = None) -> str:
+    payload = summary_rows(listing, group_by) if summary else listing_rows(listing)
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def format_csv(listing: QidVulnerabilityListing, *, summary: bool = False, group_by: str | None = None) -> str:
+    rows = summary_rows(listing, group_by) if summary else listing_rows(listing)
+    if not rows:
+        return "\n"
+    stream = io.StringIO()
+    writer = csv.DictWriter(stream, fieldnames=list(rows[0]), extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    return stream.getvalue()
+
+
+def evidence_payload(listing: QidVulnerabilityListing, *, qid: int | None, scope: str) -> dict[str, object]:
+    return {"schema_version": 1, "verified_at": datetime.now(timezone.utc).isoformat(),
+            "qid": qid, "scope": scope, "matched_assets": listing.matched_asset_count,
+            "affected_assets": listing.affected_asset_count, "detections": listing_rows(listing)}
+
+
+def write_text(path: str, content: str) -> None:
+    target = Path(path).expanduser()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(target, flags, 0o600)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as stream:
+            descriptor = -1
+            stream.write(content)
+        if descriptor != -1:
+            os.close(descriptor)
+    except BaseException:
+        if descriptor != -1:
+            os.close(descriptor)
+        raise
+
+
+def write_evidence(path: str, payload: dict[str, object]) -> None:
+    write_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
+def evidence_is_stale(path: str, days: int) -> bool:
+    payload = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+    verified_at = datetime.fromisoformat(str(payload["verified_at"]).replace("Z", "+00:00"))
+    return (datetime.now(timezone.utc) - verified_at).total_seconds() > days * 86400
 
 
 def print_verification(qid: int | None, ip_filter: IpFilter | None, listing: QidVulnerabilityListing) -> None:

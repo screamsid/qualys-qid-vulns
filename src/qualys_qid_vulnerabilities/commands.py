@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 import logging
 import sys
+from pathlib import Path
 
 from .asset_search import AssetSearch
 from .client import QidVulnerabilityClient
@@ -13,7 +14,9 @@ from .errors import ConfigurationError, QualysClientError
 from .ignore import IgnoreRequestError, IgnoreVulnerabilityRequest, create_ignore_request_batches
 from .ip_filter import IpFilter
 from .models import IgnoreVulnerabilityResult
-from .output import format_table, print_verification, safe_output
+from .output import (evidence_is_stale, evidence_payload, format_csv, format_json,
+                     format_table, print_verification, safe_output, summary_rows,
+                     write_evidence, write_text)
 from .progress import ProgressDisplay
 
 LOGGER = logging.getLogger("qualys_qid_vulnerabilities.cli")
@@ -61,24 +64,54 @@ def run(args, *, parser, config_loader: Callable = AppConfig.load,
         return 130
 
     if args.verify_ignored:
-        print_verification(args.qid, lookup_filter, listing)
+        if getattr(args, "format", "table") == "table":
+            print_verification(args.qid, lookup_filter, listing)
+        elif getattr(args, "format", "table") == "json":
+            print(format_json(listing, summary=getattr(args, "summary", False), group_by=getattr(args, "group_by", None)))
+        else:
+            print(format_csv(listing, summary=getattr(args, "summary", False), group_by=getattr(args, "group_by", None)), end="")
+        stale = False
+        if getattr(args, "evidence_file", None):
+            stale = _existing_evidence_is_stale(args.evidence_file, getattr(args, "stale_after_days", None))
+            if stale:
+                print(f"Existing evidence is older than {args.stale_after_days} day(s).", file=sys.stderr)
+            write_evidence(args.evidence_file, evidence_payload(listing, qid=args.qid, scope=_scope_label(args, lookup_filter)))
+        if getattr(args, "fail_if_not_ignored", False) and listing.not_ignored_asset_count:
+            return 2
+        if stale:
+            return 2
         return 0
     all_assets = lookup_filter is None
     selector_label = "all assets" if all_assets else "asset selector" if args.asset_search is not None else "IP filter"
     qid_label = f"QID {args.qid}" if args.qid is not None else "QIDs"
-    if listing.matched_asset_count == 0:
-        print(f"No assets with {qid_label} detections were returned." if all_assets else f"No assets matched the supplied {selector_label}.")
-    elif not listing.vulnerabilities:
-        print(f"Assets matched the supplied {selector_label}, but {qid_label} was not found.")
-    else:
-        print("Matching vulnerability detections were found.")
-    print(); print(format_table(listing)); print()
-    print(f"Total IPs or ranges requested: {lookup_filter.requested_count}" if lookup_filter is not None else "Total scope: all assets returned by Qualys")
-    print(f"Total assets matched: {listing.matched_asset_count}")
-    print(f"Total assets affected: {listing.affected_asset_count}")
-    print(f"Total vulnerabilities found: {len(listing.vulnerabilities)}")
+    machine_output = getattr(args, "format", "table") != "table" and not getattr(args, "output", None)
+    if not machine_output:
+        if listing.matched_asset_count == 0:
+            print(f"No assets with {qid_label} detections were returned." if all_assets else f"No assets matched the supplied {selector_label}.")
+        elif not listing.vulnerabilities:
+            print(f"Assets matched the supplied {selector_label}, but {qid_label} was not found.")
+        else:
+            print("Matching vulnerability detections were found.")
+    rendered = _render_listing(args, listing)
+    if getattr(args, "output", None):
+        write_text(args.output, rendered)
+    elif rendered and machine_output:
+        print(rendered)
+    elif rendered:
+        print(); print(rendered); print()
+    if not machine_output:
+        print(f"Total IPs or ranges requested: {lookup_filter.requested_count}" if lookup_filter is not None else "Total scope: all assets returned by Qualys")
+        print(f"Total assets matched: {listing.matched_asset_count}")
+        print(f"Total assets affected: {listing.affected_asset_count}")
+        print(f"Total vulnerabilities found: {len(listing.vulnerabilities)}")
+    if getattr(args, "evidence_file", None):
+        stale = _existing_evidence_is_stale(args.evidence_file, getattr(args, "stale_after_days", None))
+        write_evidence(args.evidence_file, evidence_payload(listing, qid=args.qid, scope=_scope_label(args, lookup_filter)))
+        if stale:
+            print(f"Evidence is older than {args.stale_after_days} day(s).", file=sys.stderr)
+            return 2
     if not args.ignore:
-        return 0
+        return 2 if getattr(args, "fail_if_found", False) and listing.vulnerabilities else 0
     if not listing.vulnerabilities:
         print(); print("No ignore request sent because no matching detections were found.")
         return 0
@@ -92,6 +125,10 @@ def run(args, *, parser, config_loader: Callable = AppConfig.load,
         LOGGER.error("Could not prepare ignore request: %s", exc)
         print(f"Error: {exc}", file=sys.stderr)
         return 1
+    if getattr(args, "plan", False):
+        print(); print("Ignore plan only; no Qualys changes were made.")
+        print(f"QID: {args.qid}; exact asset IPs: {len({record.ip_address for record in listing.vulnerabilities})}; API batches: {len(requests)}")
+        return 0
     if not (confirmation or confirm_ignore)(requests):
         print("Ignore cancelled; no Qualys changes were made.", file=sys.stderr)
         return 1
@@ -113,7 +150,52 @@ def run(args, *, parser, config_loader: Callable = AppConfig.load,
     print(f"Qualys response: {safe_output(results[0].message)}" if len(results) == 1 else f"Qualys responses: {len(results)} successful batches")
     print(f"Total asset IPs confirmed ignored: {sum(result.affected_ip_count for result in results)}")
     print(f"Total ignore records returned: {sum(len(result.ignored) for result in results)}")
+    if getattr(args, "verify_after_ignore", False):
+        verified = client.get_vulnerabilities_for_qid(args.qid, ip_filter=lookup_filter, include_ignored=True)
+        expected = {record.ip_address for record in listing.vulnerabilities}
+        confirmed = {record.ip_address for record in verified.vulnerabilities if record.ignored is True}
+        missing = sorted(expected - confirmed)
+        print(f"Post-write verification: {len(confirmed)}/{len(expected)} exact asset IPs confirmed ignored")
+        if missing:
+            print("Unconfirmed IPs: " + ", ".join(missing), file=sys.stderr)
+            return 2
     return 0
+
+
+def _scope_label(args, lookup_filter) -> str:
+    if lookup_filter is not None:
+        return ",".join(str(entry) for entry in lookup_filter.entries)
+    if getattr(args, "asset_ids", None):
+        return f"asset-ids:{args.asset_ids}"
+    if getattr(args, "dns_hostnames", None):
+        return f"hostnames:{args.dns_hostnames}"
+    return "all-assets"
+
+
+def _existing_evidence_is_stale(path: str, days: int | None) -> bool:
+    if not days or not Path(path).expanduser().exists():
+        return False
+    try:
+        return evidence_is_stale(path, days)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def _render_listing(args, listing) -> str:
+    if getattr(args, "summary", False):
+        rows = summary_rows(listing, getattr(args, "group_by", None))
+        import json
+        if getattr(args, "format", "table") == "json":
+            return json.dumps(rows, indent=2, sort_keys=True)
+        if getattr(args, "format", "table") == "csv":
+            return format_csv(listing, summary=True, group_by=getattr(args, "group_by", None)).rstrip("\n")
+        return "\n".join(" | ".join(f"{key}: {value}" for key, value in row.items()) for row in rows)
+    output_format = getattr(args, "format", "table")
+    if output_format == "json":
+        return format_json(listing)
+    if output_format == "csv":
+        return format_csv(listing).rstrip("\n")
+    return format_table(listing)
 
 
 def confirm_ignore(requests: tuple[IgnoreVulnerabilityRequest, ...]) -> bool:
