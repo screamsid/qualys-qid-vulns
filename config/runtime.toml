@@ -1,0 +1,11 @@
+schema_version = 1
+
+[qualys]
+# Set this to the gateway for your service region; it is intentionally not
+# populated in the distributed configuration.
+base_url = ""
+auth_model = "unset"
+timeout_seconds = 30
+retry_attempts = 3
+retry_backoff_seconds = 2.0
+verify_ssl = true

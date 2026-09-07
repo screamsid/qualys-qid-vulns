@@ -1,0 +1,162 @@
+.TH QID 1 "2026-09-07" "qid 0.1.0" "User Commands"
+.SH NAME
+qid \- look up a Qualys QID and optionally create a confirmed ignore
+.SH SYNOPSIS
+.B qid
+.I QID
+.RB [ OPTIONS ]
+.PP
+.B qid ?
+.PP
+.B qid \-\-man
+.PP
+.B qid
+.I QID
+.RB \-\-ignore
+.RB [ \-\-ips IP_FILTER | \-\-asset-ids ASSET_IDS | \-\-dns-hostnames HOSTNAMES ]
+.RB \-\-comment COMMENT
+.RB [ \-\-reopen-after-days DAYS ]
+.SH DESCRIPTION
+Queries Qualys host detections for one QID. With no selector, all assets
+returned by Qualys are queried; a selector limits the lookup to a chosen
+scope.
+Lookups and ignored-state verification are read-only. Creating an exception
+requires \fB\-\-ignore\fR, an audit comment, and the exact confirmation
+requested by the command.
+.PP
+An unscoped lookup may be a large and slower request. The \fB\-\-ignore\fR
+workflow always requires an explicit selector.
+.PP
+Asset and hostname selectors are resolved through Qualys Host List data. The
+tool then queries only exact IP addresses returned for matching assets; it does
+not perform local DNS resolution.
+.SH OPTIONS
+.TP
+.BI QID
+Positive Qualys QID to query.
+.TP
+.BI \-\-ips\ IP_FILTER
+Comma-separated IPv4 addresses and/or ranges, for example
+.IR 192.0.2.10-192.0.2.20 .
+The alias is \fB\-\-ip\fR.
+.TP
+.BI \-\-asset-ids\ ASSET_IDS
+Comma-separated exact Qualys Asset IDs.
+The alias is \fB\-\-asset-id\fR.
+.TP
+.BI \-\-dns-hostnames\ HOSTNAMES
+Comma-separated exact DNS names or hostnames. Matching is case-insensitive and
+ignores a trailing dot.
+The aliases are \fB\-\-dns-hostname\fR and \fB\-\-hostname\fR.
+.TP
+.BI \-\-verify-ignored
+Include detection-level ignored-state evidence in a read-only result. Cannot
+be combined with \fB\-\-ignore\fR.
+.TP
+.B \-\-ignored-only
+With \fB\-\-verify-ignored\fR, show only detections that Qualys reports as
+currently ignored. This is read-only.
+.TP
+.B \-\-ignore
+Submit an ignore request after preflight lookup and exact interactive
+confirmation. This changes Qualys state.
+.TP
+.BI \-\-comment\ COMMENT
+Required audit comment for \fB\-\-ignore\fR; maximum 255 characters.
+.TP
+.BI \-\-reopen-after-days\ DAYS
+Automatically reopen after 1 to 730 days. Valid only with \fB\-\-ignore\fR.
+If omitted, the existing indefinite-ignore behavior is retained.
+.TP
+.BI \-\-config-file\ PATH
+Use an alternate runtime TOML configuration file.
+.TP
+.BI \-\-env-file\ PATH
+Use an alternate environment file. Never commit it if it contains credentials.
+.TP
+.B \-v, \-\-verbose
+Show timestamped request and response diagnostics on standard error. The
+diagnostics include the endpoint, status, elapsed time, and response size;
+request bodies, credentials, and response content are not logged.
+.TP
+.BI \-\-log-file\ PATH
+Override the default private log at
+.I logs/qid.log . Rotation starts at 5 MiB
+and retains three backups, limiting the log set to approximately 20 MiB. A
+log is written for every normal command invocation. Each invocation starts a separate block
+marked with its QID and mode, with a blank line before it.
+.TP
+.B \-h, \-\-help
+Show command help.
+.TP
+.B \-\-man
+Open the bundled manual page using the system \fBman\fR command.
+.TP
+.B ?
+Show command help, equivalent to invoking \fBqid \-\-help\fR.
+.SH EXAMPLES
+.EX
+qid 12345 --ips "192.0.2.10-192.0.2.20"
+.EE
+.PP
+.EX
+qid 12345 --asset-ids "100001,100002"
+.EE
+.PP
+.EX
+qid 12345 --ips "192.0.2.10" --verify-ignored
+.EE
+.PP
+.EX
+qid 12345 --verify-ignored --ignored-only
+.EE
+.PP
+.EX
+qid 12345 --ips "192.0.2.10" --ignore \\
+  --reopen-after-days 30 --comment "Temporary vulnerability exception"
+.EE
+.SH FILES
+.TP
+.I config/runtime.toml
+Default non-secret runtime settings from the installed project directory.
+.TP
+.I .env
+Default local credentials from the installed project directory. Keep it private
+and untracked.
+.TP
+.I .env.example
+Template showing supported variables without credentials.
+.SH TROUBLESHOOTING
+.TP
+.B Ignore selector required
+Supply one of \fB\-\-ips\fR, \fB\-\-asset-ids\fR, or
+\fB\-\-dns-hostnames\fR when using the state-changing \fB\-\-ignore\fR
+workflow. Read-only lookups may omit a selector to query all assets.
+.TP
+.B Authentication failure
+Check credentials in \fI.env\fR and the configured authentication model.
+.TP
+.B No matching assets
+Check the exact Asset ID or DNS name as returned by Qualys Host List.
+.TP
+.B No detections
+The supplied scope returned no matching detections for this QID; assets
+outside that scope were not inspected.
+.TP
+.B Ignore request rejected
+Check the audit comment, displayed targets, and confirmation text. No request
+is submitted without exact confirmation.
+.SH EXIT STATUS
+.TP
+.B 0
+The command completed, including a valid empty result.
+.TP
+.B 1
+Configuration, validation, transport, or Qualys request error.
+.SH SECURITY
+Credentials are read from environment variables or the local environment file
+and should not be supplied as command-line arguments. Normal operation is
+read-only; \fB\-\-ignore\fR is the only option that submits a state-changing
+request.
+.SH SEE ALSO
+.BR python (1)
