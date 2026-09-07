@@ -13,9 +13,16 @@ from . import logging_setup
 
 def open_manual(*, run=subprocess.run) -> int:
     project_root = Path(os.environ.get("QID_PROJECT_ROOT", Path(__file__).resolve().parents[2])).expanduser()
-    manual = project_root / "man" / "qualys-qid-vulnerabilities.1"
-    if not manual.is_file():
-        print(f"Error: bundled manual page not found at {manual}", file=sys.stderr)
+    relative_manual = Path("man") / "qualys-qid-vulnerabilities.1"
+    candidates = (
+        project_root / relative_manual,
+        Path(sys.prefix) / relative_manual,
+        Path(sys.prefix) / "share" / "man" / "man1" / "qualys-qid-vulnerabilities.1",
+    )
+    manual = next((candidate for candidate in candidates if candidate.is_file()), None)
+    if manual is None:
+        searched = ", ".join(str(candidate) for candidate in candidates)
+        print(f"Error: bundled manual page not found; searched: {searched}", file=sys.stderr)
         return 1
     try:
         result = run(["man", "-l", str(manual)], check=False)
