@@ -312,6 +312,31 @@ def test_cli_question_mark_shows_help(capsys) -> None:
     assert "usage: qid [QID] [OPTIONS]" in capsys.readouterr().out
 
 
+def test_cli_logs_displays_default_log(tmp_path, monkeypatch, capsys) -> None:
+    log_path = tmp_path / "qid.log"
+    log_path.write_text("first log entry\nsecond log entry\n")
+    monkeypatch.setattr(logging_setup, "DEFAULT_LOG_FILE", log_path)
+
+    assert cli.main(["logs"]) == 0
+    assert capsys.readouterr().out == "first log entry\nsecond log entry\n"
+
+
+def test_cli_logs_accepts_custom_log_file(tmp_path, capsys) -> None:
+    log_path = tmp_path / "custom.log"
+    log_path.write_text("custom log entry")
+
+    assert cli.main(["logs", "--log-file", str(log_path)]) == 0
+    assert capsys.readouterr().out == "custom log entry\n"
+
+
+def test_cli_logs_reports_missing_log(capsys, tmp_path, monkeypatch) -> None:
+    log_path = tmp_path / "missing.log"
+    monkeypatch.setattr(logging_setup, "DEFAULT_LOG_FILE", log_path)
+
+    assert cli.main(["logs"]) == 1
+    assert "could not read log file" in capsys.readouterr().err
+
+
 def test_cli_man_opens_bundled_manual(monkeypatch) -> None:
     calls = []
 
@@ -326,7 +351,7 @@ def test_cli_man_opens_bundled_manual(monkeypatch) -> None:
     assert calls[0][1] is False
 
 
-def test_cli_interrupt_exits_without_traceback(monkeypatch, capsys) -> None:
+def test_cli_interrupt_exits_without_traceback(tmp_path, monkeypatch, capsys) -> None:
     def interrupt(**kwargs):
         raise KeyboardInterrupt
 
@@ -356,6 +381,7 @@ def test_default_log_does_not_nest_when_started_from_logs(tmp_path, monkeypatch)
     project_root = tmp_path / "project"
     logs_dir = project_root / "logs"
     logs_dir.mkdir(parents=True)
+    monkeypatch.setattr(logging_setup, "DEFAULT_LOG_FILE", logs_dir / "qid.log")
     monkeypatch.chdir(logs_dir)
 
     logger = configure_logging()

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from xml.etree import ElementTree
 
 from qualys_qid_vulnerabilities.errors import QualysResponseError
+from qualys_qid_vulnerabilities.xml_safety import fromstring
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,7 +121,9 @@ class QidVulnerabilityListing:
         requested_qid: int | None,
     ) -> "QidVulnerabilityListing":
         try:
-            root = ElementTree.fromstring(payload.strip())
+            root = fromstring(payload)
+        except ValueError as exc:
+            raise QualysResponseError("Qualys host vulnerability XML was unsafe") from exc
         except ElementTree.ParseError as exc:
             raise QualysResponseError(
                 "Qualys host vulnerability response was not valid XML"
@@ -226,7 +229,9 @@ class IgnoreVulnerabilityResult:
         requested_ips: tuple[str, ...],
     ) -> "IgnoreVulnerabilityResult":
         try:
-            root = ElementTree.fromstring(payload.strip())
+            root = fromstring(payload)
+        except ValueError as exc:
+            raise QualysResponseError("Qualys ignore vulnerability XML was unsafe") from exc
         except ElementTree.ParseError as exc:
             raise QualysResponseError(
                 "Qualys ignore vulnerability response was not valid XML"

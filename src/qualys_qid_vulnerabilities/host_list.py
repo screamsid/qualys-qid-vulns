@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from xml.etree import ElementTree
 
 from qualys_qid_vulnerabilities.errors import QualysResponseError
+from qualys_qid_vulnerabilities.xml_safety import fromstring
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,7 +18,9 @@ class HostAsset:
 
 def parse_host_list(payload: bytes) -> tuple[HostAsset, ...]:
     try:
-        root = ElementTree.fromstring(payload.strip())
+        root = fromstring(payload)
+    except ValueError as exc:
+        raise QualysResponseError("Qualys host list XML was unsafe") from exc
     except ElementTree.ParseError as exc:
         raise QualysResponseError("Qualys host list response was not valid XML") from exc
 

@@ -28,6 +28,7 @@ from qualys_qid_vulnerabilities.models import (
     QidVulnerabilityListing,
 )
 from qualys_qid_vulnerabilities.progress import ProgressDisplay
+from qualys_qid_vulnerabilities import logging_setup
 from qualys_qid_vulnerabilities.logging_setup import configure_logging
 
 
@@ -84,6 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
               qid 12345 --ips "192.0.2.10-192.0.2.20"
               qid 12345 --hostname "server-one.example.test" --verify-ignored
               qid 12345 --asset-id 100001 --ignore --comment "Approved exception"
+              qid logs
 
             notes:
               Omit QID to list all returned QIDs for a selected device; an
@@ -92,6 +94,7 @@ def build_parser() -> argparse.ArgumentParser:
               matched against Qualys Host List data; local DNS is not queried.
               Run `qid QID --ignore ...` only after reviewing the preflight.
               Use `qid --help` or `qid ?` to show this help.
+              Use `qid logs` to display the private command log.
 
             manual:
               Open directly with: qid --man
@@ -224,6 +227,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if arguments == ["--man"]:
         return _open_manual()
+    if arguments and arguments[0] == "logs":
+        return _show_logs(arguments[1:])
     try:
         args = parser.parse_args(arguments)
     except KeyboardInterrupt:
@@ -363,6 +368,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     try:
+        if lookup_filter is not None and args.ignore:
+            unexpected_ips = sorted(
+                {
+                    record.ip_address
+                    for record in listing.vulnerabilities
+                    if not _ip_in_filter(lookup_filter, record.ip_address)
+                }
+            )
+            if unexpected_ips:
+                raise IgnoreRequestError(
+                    "Qualys returned vulnerability IPs outside the requested scope: "
+                    + ", ".join(unexpected_ips)
+                )
         ignore_requests = create_ignore_request_batches(
             qid=args.qid,
             ip_addresses=tuple(
@@ -421,7 +439,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print()
     if len(results) == 1:
-        print(f"Qualys response: {results[0].message}")
+        print(f"Qualys response: {_safe_output(results[0].message)}")
     else:
         print(f"Qualys responses: {len(results)} successful batches")
     print(
@@ -452,6 +470,35 @@ def _open_manual() -> int:
         print(f"Error: could not open the manual page: {exc}", file=sys.stderr)
         return 1
     return result.returncode
+
+
+def _show_logs(arguments: Sequence[str]) -> int:
+    """Print the command log without creating a new log record."""
+
+    parser = argparse.ArgumentParser(
+        prog="qid logs",
+        description="Display the QID command log.",
+    )
+    parser.add_argument(
+        "--log-file",
+        metavar="PATH",
+        help="Display PATH instead of the default private log",
+    )
+    args = parser.parse_args(arguments)
+    log_path = (
+        Path(args.log_file).expanduser()
+        if args.log_file
+        else logging_setup.DEFAULT_LOG_FILE
+    )
+    try:
+        contents = log_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error: could not read log file {log_path}: {exc}", file=sys.stderr)
+        return 1
+    sys.stdout.write(_safe_log_output(contents))
+    if contents and not contents.endswith("\n"):
+        sys.stdout.write("\n")
+    return 0
 
 
 def _positive_qid(value: str) -> int:
@@ -532,12 +579,12 @@ def _confirm_ignore(requests: tuple[IgnoreVulnerabilityRequest, ...]) -> bool:
 def _format_table(listing: QidVulnerabilityListing) -> str:
     rows = [
         (
-            record.asset_id,
+            _safe_output(record.asset_id),
             record.ip_address,
-            record.dns_hostname or "-",
+            _safe_output(record.dns_hostname or "-"),
             str(record.qid),
-            record.status,
-            record.vulnerability_id or "-",
+            _safe_output(record.status),
+            _safe_output(record.vulnerability_id or "-"),
         )
         for record in listing.vulnerabilities
     ]
@@ -578,8 +625,8 @@ def _print_verification(
         print(f"Assets matched with no returned detection for {qid_label}:")
         for asset in listing.assets_without_requested_qid:
             print(
-                f"- {asset.asset_id} | {asset.ip_address} | "
-                f"{asset.dns_hostname or '-'}"
+                f"- {_safe_output(asset.asset_id)} | {asset.ip_address} | "
+                f"{_safe_output(asset.dns_hostname or '-')}"
             )
 
     if ip_filter is not None:
@@ -602,7 +649,8 @@ def _print_verification(
     else:
         print("Total scope: all assets returned by Qualys")
     print(f"Total assets matched: {listing.matched_asset_count}")
-    print(f"Total assets with {qid_label}: {listing.affected_asset_count}")
+    total_label = "the QID" if qid is not None else "QIDs"
+    print(f"Total assets with {total_label}: {listing.affected_asset_count}")
     print(
         "Total assets confirmed ignored: "
         f"{listing.confirmed_ignored_asset_count}"
@@ -640,13 +688,13 @@ def _format_notification_card(lines: tuple[str, ...]) -> str:
 def _verification_rows(listing: QidVulnerabilityListing) -> list[tuple[str, ...]]:
     return [
         (
-            record.asset_id,
+            _safe_output(record.asset_id),
             record.ip_address,
-            record.dns_hostname or "-",
+            _safe_output(record.dns_hostname or "-"),
             str(record.qid),
-            record.status,
+            _safe_output(record.status),
             record.ignored_state,
-            record.vulnerability_id or "-",
+            _safe_output(record.vulnerability_id or "-"),
         )
         for record in listing.vulnerabilities
     ]
@@ -743,6 +791,32 @@ def _colour_table_cell(header: str, value: str) -> str:
             value, _GREEN if value.strip() == "ignored" else _RED
         )
     return value
+
+
+def _safe_output(value: str) -> str:
+    """Prevent API-provided control characters from reaching the terminal."""
+    return "".join(
+        char if char in "\n\t" or ord(char) >= 32 else f"\\x{ord(char):02x}"
+        for char in value
+    ).replace("\n", "\\x0a").replace("\r", "\\x0d")
+
+
+def _safe_log_output(value: str) -> str:
+    """Display stored logs without replaying control characters."""
+    return "".join(
+        char if char in "\n\t" or ord(char) >= 32 else f"\\x{ord(char):02x}"
+        for char in value
+    ).replace("\r", "\\x0d")
+
+
+def _ip_in_filter(ip_filter: IpFilter, ip_address: str) -> bool:
+    try:
+        return any(
+            ip_filter.entry_matches(entry, ip_address)
+            for entry in ip_filter.entries
+        )
+    except ValueError:
+        return False
 
 
 if __name__ == "__main__":

@@ -30,6 +30,14 @@ _LEVEL_COLOURS = {
 }
 
 
+def _safe_text(value: str) -> str:
+    """Keep control characters from becoming terminal or log directives."""
+    return "".join(
+        char if char in "\n\t" or ord(char) >= 32 else f"\\x{ord(char):02x}"
+        for char in value
+    )
+
+
 class TerminalFormatter(logging.Formatter):
     """Colour and wrap diagnostic records for a terminal without ANSI in files."""
 
@@ -51,7 +59,7 @@ class TerminalFormatter(logging.Formatter):
             f"{self.formatTime(record, self.datefmt)} "
             f"{record.levelname:<8} {logger_name}: "
         )
-        message = record.getMessage()
+        message = _safe_text(record.getMessage())
         if record.exc_info:
             message = f"{message}\n{self.formatException(record.exc_info)}"
         wrapped = textwrap.wrap(
@@ -76,7 +84,7 @@ class FileFormatter(logging.Formatter):
         timestamp = self.formatTime(record, "%Y-%m-%d %H:%M:%S")
         level = record.levelname
         component = record.name.rsplit(".", 1)[-1]
-        message = record.getMessage()
+        message = _safe_text(record.getMessage())
         if record.exc_info:
             message = f"{message}\n{self.formatException(record.exc_info)}"
         # A traceback is useful in the file, but embedded newlines in a
@@ -120,7 +128,9 @@ def configure_logging(*, verbose: bool = False, log_file: str | None = None) -> 
 
     log_path = Path(log_file).expanduser() if log_file else _default_log_file()
     try:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
+        if log_path.is_symlink():
+            raise OSError("refusing to write through a symlink")
+        log_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         file_handler = RotatingFileHandler(
             log_path,
             maxBytes=MAX_LOG_BYTES,

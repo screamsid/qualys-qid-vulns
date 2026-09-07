@@ -29,7 +29,7 @@ def test_standalone_environment_overrides_use_project_neutral_names() -> None:
 def test_legacy_asset_gap_environment_names_are_not_consumed() -> None:
     with pytest.raises(
         ConfigurationValidationError,
-        match="qualys.auth_model must be 'basic' or 'token'",
+        match="qualys.base_url must start with",
     ):
         AppConfig.load(
             config_file="/does-not-exist/runtime.toml",

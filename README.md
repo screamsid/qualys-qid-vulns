@@ -45,6 +45,14 @@ Open the manual directly from the command:
 qid --man
 ```
 
+Display the command log without needing to locate the log file:
+
+```bash
+qid logs
+```
+
+To display a log written to a custom path, use `qid logs --log-file PATH`.
+
 Set `QUALYS_BASE_URL` to the gateway for your Qualys service region, then set
 either `QUALYS_USERNAME` and `QUALYS_PASSWORD` for basic authentication, or
 `QUALYS_ACCESS_TOKEN` for token authentication. Timeouts are in
@@ -167,6 +175,11 @@ Exported environment variables override matching `.env` values. Credentials
 must not be placed in command-line arguments, committed files, or audit
 comments.
 
+For TLS-inspecting proxies such as Netskope, keep `verify_ssl = true` and set
+`QUALYS_CA_BUNDLE` to a PEM bundle containing the approved proxy root CA. The
+legacy `verify_ssl = false` option remains available for compatibility, but it
+disables certificate verification and should be treated as an unsafe exception.
+
 ## Troubleshooting
 
 - `omitting QID requires an explicit ... selector`: provide `--ips`,
@@ -183,7 +196,8 @@ comments.
 - Ignore errors: check the audit comment length (maximum 255 characters), the
   displayed target scope, the reopen setting, and the confirmation text.
 - Network/TLS errors: verify the configured gateway is reachable and keep
-  `verify_ssl = true` unless an approved certificate configuration is in use.
+  `verify_ssl = true`; use `QUALYS_CA_BUNDLE` for an approved TLS-inspecting
+  proxy certificate.
 
 ## Man page
 

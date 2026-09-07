@@ -9,3 +9,5 @@ timeout_seconds = 30
 retry_attempts = 3
 retry_backoff_seconds = 2.0
 verify_ssl = true
+# Prefer this for TLS-inspecting proxies such as Netskope. Keep verify_ssl true.
+# ca_bundle = "/path/to/netskope-root-ca.pem"

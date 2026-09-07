@@ -48,6 +48,7 @@ class QualysRuntimeConfig:
     retry_attempts: int
     retry_backoff_seconds: float
     verify_ssl: bool
+    ca_bundle: str | None = None
 
     def validate(self) -> None:
         if not self.base_url.startswith(("http://", "https://")):
@@ -63,6 +64,12 @@ class QualysRuntimeConfig:
             raise ConfigurationValidationError("qualys.timeout_seconds must be positive")
         if self.retry_attempts < 0 or self.retry_backoff_seconds < 0:
             raise ConfigurationValidationError("Qualys retry settings must be non-negative")
+        if self.ca_bundle:
+            ca_path = Path(self.ca_bundle).expanduser()
+            if not ca_path.is_file():
+                raise ConfigurationValidationError(
+                    f"qualys.ca_bundle is not a regular file: {ca_path}"
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +108,7 @@ class AppConfig:
             retry_attempts=int(qualys.get("retry_attempts", 3)),
             retry_backoff_seconds=float(qualys.get("retry_backoff_seconds", 2.0)),
             verify_ssl=_parse_bool(qualys.get("verify_ssl", True)),
+            ca_bundle=_clean(str(qualys["ca_bundle"])) if qualys.get("ca_bundle") else None,
         )
         config = cls(
             qualys=runtime,
@@ -162,6 +170,7 @@ def _environment_overrides(env: Mapping[str, str]) -> dict[str, Any]:
         "QUALYS_RETRY_ATTEMPTS": "retry_attempts",
         "QUALYS_RETRY_BACKOFF_SECONDS": "retry_backoff_seconds",
         "QUALYS_VERIFY_SSL": "verify_ssl",
+        "QUALYS_CA_BUNDLE": "ca_bundle",
     }
     return {field: env[name] for name, field in names.items() if name in env}
 

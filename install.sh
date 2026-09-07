@@ -61,12 +61,13 @@ fi
 # Keep the installed project location in the launcher rather than depending
 # on the caller's working directory or Python's site-packages layout.
 LAUNCHER="$INSTALL_DIR/qid"
+INSTALL_DIR_QUOTED=$(printf '%s' "$INSTALL_DIR" | sed "s/'/'\\\\''/g")
 cat > "$LAUNCHER" <<EOF
 #!/bin/sh
 set -eu
-export QID_PROJECT_ROOT='$INSTALL_DIR'
-export PYTHONPATH='$INSTALL_DIR/src'\${PYTHONPATH:+:\$PYTHONPATH}
-exec '$INSTALL_DIR/.venv/bin/python' -m qualys_qid_vulnerabilities.cli "\$@"
+export QID_PROJECT_ROOT='$INSTALL_DIR_QUOTED'
+export PYTHONPATH='$INSTALL_DIR_QUOTED/src'\${PYTHONPATH:+:\$PYTHONPATH}
+exec '$INSTALL_DIR_QUOTED/.venv/bin/python' -m qualys_qid_vulnerabilities.cli "\$@"
 EOF
 chmod 755 "$LAUNCHER"
 ln -sfn "$LAUNCHER" "$BIN_DIR/qid"

@@ -19,6 +19,7 @@ from qualys_qid_vulnerabilities.errors import (
 
 
 USER_AGENT = "qualys_qid_vulnerabilities/0.1"
+MAX_RESPONSE_BYTES = 10 * 1024 * 1024
 LOGGER = logging.getLogger("qualys_qid_vulnerabilities.transport")
 
 
@@ -32,6 +33,7 @@ class QualysTransport:
         auth_model: str,
         timeout_seconds: int,
         verify_ssl: bool,
+        ca_bundle: str | None = None,
         username: str | None = None,
         password: str | None = None,
         access_token: str | None = None,
@@ -40,6 +42,7 @@ class QualysTransport:
         self.auth_model = auth_model
         self.timeout_seconds = timeout_seconds
         self.verify_ssl = verify_ssl
+        self.ca_bundle = ca_bundle
         self.username = username
         self.password = password
         self.access_token = access_token
@@ -53,6 +56,7 @@ class QualysTransport:
             auth_model=config.qualys.auth_model,
             timeout_seconds=config.qualys.timeout_seconds,
             verify_ssl=config.qualys.verify_ssl,
+            ca_bundle=config.qualys.ca_bundle,
             username=config.secrets.username,
             password=config.secrets.password,
             access_token=config.secrets.access_token,
@@ -144,7 +148,9 @@ class QualysTransport:
         expected_status_codes: set[int] | None = None,
     ) -> bytes:
         kwargs: dict[str, Any] = {"timeout": self.timeout_seconds}
-        if not self.verify_ssl:
+        if self.verify_ssl and self.ca_bundle:
+            kwargs["context"] = ssl.create_default_context(cafile=self.ca_bundle)
+        elif not self.verify_ssl:
             kwargs["context"] = ssl._create_unverified_context()
         started = time.monotonic()
         LOGGER.info(
@@ -154,7 +160,11 @@ class QualysTransport:
         try:
             with request.urlopen(req, **kwargs) as response:
                 status_code = getattr(response, "status", None) or response.getcode()
-                body = response.read()
+                body = response.read(MAX_RESPONSE_BYTES + 1)
+                if len(body) > MAX_RESPONSE_BYTES:
+                    raise QualysTransportError(
+                        "Qualys API response exceeded the 10 MiB safety limit"
+                    )
         except error.HTTPError as exc:
             LOGGER.warning(
                 "Request failed with HTTP %s from %s after %.2fs",

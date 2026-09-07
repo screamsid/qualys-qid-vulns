@@ -10,6 +10,9 @@ qid \- look up a Qualys QID and optionally create a confirmed ignore
 .PP
 .B qid \-\-man
 .PP
+.B qid logs
+.RB [ \-\-log-file PATH ]
+.PP
 .B qid
 .I QID
 .RB \-\-ignore
@@ -17,6 +20,9 @@ qid \- look up a Qualys QID and optionally create a confirmed ignore
 .RB \-\-comment COMMENT
 .RB [ \-\-reopen-after-days DAYS ]
 .SH DESCRIPTION
+.B qid logs
+prints the configured command log and does not create a new log record.
+.PP
 Queries Qualys host detections for one QID. If QID is omitted, an explicit
 selector is required and all QIDs returned for that device are displayed.
 With a QID and no selector, all assets returned by Qualys are queried; a
@@ -75,6 +81,11 @@ Use an alternate runtime TOML configuration file.
 .TP
 .BI \-\-env-file\ PATH
 Use an alternate environment file. Never commit it if it contains credentials.
+.TP
+.BI QUALYS_CA_BUNDLE\ PATH
+Optional PEM CA bundle for a TLS-inspecting proxy such as Netskope. Prefer this
+with \fBverify_ssl = true\fR. Disabling certificate verification remains
+possible for compatibility but is unsafe.
 .TP
 .B \-v, \-\-verbose
 Show timestamped request and response diagnostics on standard error. The
@@ -159,6 +170,8 @@ Configuration, validation, transport, or Qualys request error.
 Credentials are read from environment variables or the local environment file
 and should not be supplied as command-line arguments. Normal operation is
 read-only; \fB\-\-ignore\fR is the only option that submits a state-changing
-request.
+request. Before an ignore request is submitted, returned vulnerability IPs are
+checked against the requested scope. API XML responses are size-limited and
+entity declarations are rejected.
 .SH SEE ALSO
 .BR python (1)
