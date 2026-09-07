@@ -40,28 +40,29 @@ class QidVulnerabilityClient(QualysTransport):
 
     def get_vulnerabilities_for_qid(
         self,
-        qid: int,
+        qid: int | None,
         *,
         ip_filter: IpFilter | None = None,
         include_ignored: bool = False,
     ) -> QidVulnerabilityListing:
-        if qid <= 0:
+        if qid is not None and qid <= 0:
             raise ValueError("QID must be a positive integer")
 
         form: dict[str, str] = {
             "action": "list",
-            "qids": str(qid),
             "show_asset_id": "1",
             "truncation_limit": "0",
         }
+        if qid is not None:
+            form["qids"] = str(qid)
         if ip_filter is not None:
             form["ips"] = ip_filter.qualys_value
         if include_ignored:
             form["include_ignored"] = "1"
 
         LOGGER.info(
-            "Looking up QID %s detections%s",
-            qid,
+            "Looking up %s detections%s",
+            f"QID {qid}" if qid is not None else "all QID",
             " including ignored state" if include_ignored else "",
         )
 

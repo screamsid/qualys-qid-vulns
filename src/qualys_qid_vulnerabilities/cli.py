@@ -68,21 +68,26 @@ VERIFICATION_HEADERS = (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="qid",
-        usage="qid QID [OPTIONS]",
+        usage="qid [QID] [OPTIONS]",
         formatter_class=_HelpFormatter,
         description=(
-            "Look up one Qualys QID across all assets or a selected scope.\n"
+            "Look up one QID, or all QIDs for a selected device.\n"
             "Read-only by default; --ignore requires explicit confirmation."
         ),
         epilog=textwrap.dedent(
             """
             examples:
               qid 12345
+              qid --ip 192.0.2.10
+              qid --asset-id 100001
+              qid --hostname "server-one.example.test"
               qid 12345 --ips "192.0.2.10-192.0.2.20"
               qid 12345 --hostname "server-one.example.test" --verify-ignored
               qid 12345 --asset-id 100001 --ignore --comment "Approved exception"
 
             notes:
+              Omit QID to list all returned QIDs for a selected device; an
+              IP, Asset ID, or DNS/hostname selector is required in that mode.
               Selectors are mutually exclusive. Asset IDs and hostnames are
               matched against Qualys Host List data; local DNS is not queried.
               Run `qid QID --ignore ...` only after reviewing the preflight.
@@ -99,7 +104,8 @@ def build_parser() -> argparse.ArgumentParser:
         "qid",
         metavar="QID",
         type=_positive_qid,
-        help="Positive Qualys QID to retrieve",
+        nargs="?",
+        help="Positive Qualys QID to retrieve; omit to list all QIDs for a selector",
     )
 
     selector = parser.add_argument_group("target scope (choose at most one)")
@@ -238,6 +244,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             search = AssetSearch.parse(asset_ids=args.asset_ids, hostnames=args.dns_hostnames)
         except AssetSearchError as exc:
             parser.error(str(exc))
+    if args.qid is None and not (args.ips or args.asset_ids or args.dns_hostnames):
+        parser.error("omitting QID requires an explicit IP, Asset ID, or DNS/hostname selector")
     if args.ignore and args.verify_ignored:
         parser.error("--verify-ignored may not be combined with --ignore")
     if args.ignored_only and not args.verify_ignored:
@@ -246,6 +254,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--comment is required when --ignore is used")
     if args.ignore and not (args.ips or args.asset_ids or args.dns_hostnames):
         parser.error("--ignore requires an explicit IP, Asset ID, or DNS/hostname selector")
+    if args.ignore and args.qid is None:
+        parser.error("--ignore requires a QID")
     if args.comment is not None and not args.ignore:
         parser.error("--comment may only be used with --ignore")
     if args.reopen_after_days is not None and not args.ignore:
@@ -276,7 +286,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         lookup_description = (
             f"Verifying ignored state for QID {args.qid} in Qualys"
             if args.verify_ignored
-            else f"Querying Qualys for QID {args.qid} detections"
+            else (
+                f"Querying Qualys for QID {args.qid} detections"
+                if args.qid is not None
+                else "Querying Qualys for all QID detections"
+            )
         )
         with progress.step(lookup_description):
             if args.verify_ignored:
@@ -316,14 +330,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         if search is not None
         else "IP filter"
     )
+    qid_label = f"QID {args.qid}" if args.qid is not None else "QIDs"
     if listing.matched_asset_count == 0:
         if all_assets:
-            print(f"No assets with QID {args.qid} detections were returned.")
+            print(f"No assets with {qid_label} detections were returned.")
         else:
             print(f"No assets matched the supplied {selector_label}.")
     elif not listing.vulnerabilities:
         print(
-            f"Assets matched the supplied {selector_label}, but QID {args.qid} "
+            f"Assets matched the supplied {selector_label}, but {qid_label} "
             "was not found."
         )
     else:
@@ -530,11 +545,12 @@ def _format_table(listing: QidVulnerabilityListing) -> str:
 
 
 def _print_verification(
-    qid: int,
+    qid: int | None,
     ip_filter: IpFilter | None,
     listing: QidVulnerabilityListing,
 ) -> None:
     scope_label = "all assets" if ip_filter is None else "the supplied IP filter"
+    qid_label = f"QID {qid}" if qid is not None else "QIDs"
     if listing.matched_asset_count == 0:
         print(
             f"No asset or QID detection was returned for {scope_label}. "
@@ -544,7 +560,7 @@ def _print_verification(
     elif not listing.vulnerabilities:
         print(
             f"Assets were returned for {scope_label}, but no detection "
-            f"for QID {qid} was returned."
+            f"for {qid_label} was returned."
         )
     elif listing.confirmed_ignored_asset_count == listing.affected_asset_count:
         print("Every asset with returned QID detections is confirmed ignored.")
@@ -557,9 +573,9 @@ def _print_verification(
     print()
     print(_format_verification_table(listing))
 
-    if listing.assets_without_requested_qid:
+    if qid is not None and listing.assets_without_requested_qid:
         print()
-        print(f"Assets matched with no returned detection for QID {qid}:")
+        print(f"Assets matched with no returned detection for {qid_label}:")
         for asset in listing.assets_without_requested_qid:
             print(
                 f"- {asset.asset_id} | {asset.ip_address} | "
@@ -586,7 +602,7 @@ def _print_verification(
     else:
         print("Total scope: all assets returned by Qualys")
     print(f"Total assets matched: {listing.matched_asset_count}")
-    print(f"Total assets with the QID: {listing.affected_asset_count}")
+    print(f"Total assets with {qid_label}: {listing.affected_asset_count}")
     print(
         "Total assets confirmed ignored: "
         f"{listing.confirmed_ignored_asset_count}"
@@ -692,7 +708,7 @@ def _responsive_column_widths(
     rows: list[tuple[str, ...]],
 ) -> list[int]:
     widths = [
-        max(len(header), *(len(row[index]) for row in rows))
+        max((len(header), *(len(row[index]) for row in rows)))
         for index, header in enumerate(headers)
     ]
     available = max(20, _terminal_width()) - 3 * (len(headers) - 1)

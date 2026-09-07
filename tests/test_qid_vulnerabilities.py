@@ -298,7 +298,7 @@ def test_cli_parser_accepts_verbose_for_read_only_and_ignore_commands() -> None:
 def test_cli_help_is_grouped_and_includes_quick_start_examples() -> None:
     help_text = cli.build_parser().format_help()
 
-    assert "usage: qid QID [OPTIONS]" in help_text
+    assert "usage: qid [QID] [OPTIONS]" in help_text
     assert "target scope (choose at most one):" in help_text
     assert "read-only modes:" in help_text
     assert "ignore workflow (changes Qualys state):" in help_text
@@ -309,7 +309,7 @@ def test_cli_help_is_grouped_and_includes_quick_start_examples() -> None:
 
 def test_cli_question_mark_shows_help(capsys) -> None:
     assert cli.main(["?"]) == 0
-    assert "usage: qid QID [OPTIONS]" in capsys.readouterr().out
+    assert "usage: qid [QID] [OPTIONS]" in capsys.readouterr().out
 
 
 def test_cli_man_opens_bundled_manual(monkeypatch) -> None:
@@ -603,6 +603,39 @@ def test_client_can_query_a_qid_across_all_assets(
     }
 
 
+def test_client_can_query_all_qids_for_a_selected_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = QidVulnerabilityClient(
+        base_url="https://gateway.example.test",
+        auth_model="basic",
+        timeout_seconds=30,
+        verify_ssl=True,
+        username="alice",
+        password="secret",
+    )
+    captured: dict[str, object] = {}
+
+    def fake_post_form(**kwargs):
+        captured.update(kwargs)
+        return HOST_DETECTION_XML
+
+    monkeypatch.setattr(client, "_post_form", fake_post_form)
+
+    listing = client.get_vulnerabilities_for_qid(
+        None,
+        ip_filter=IpFilter.parse("192.0.2.10"),
+    )
+
+    assert len(listing.vulnerabilities) == 3
+    assert captured["form"] == {
+        "action": "list",
+        "ips": "192.0.2.10",
+        "show_asset_id": "1",
+        "truncation_limit": "0",
+    }
+
+
 def test_client_searches_asset_id_and_hostname_using_read_only_host_list(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -851,6 +884,14 @@ def test_cli_prints_table_and_totals(
     assert "Total assets matched: 2" in output
     assert "Total assets affected: 2" in output
     assert "Total vulnerabilities found: 3" in output
+
+
+@pytest.mark.parametrize("headers", [cli.HEADERS, cli.VERIFICATION_HEADERS])
+def test_cli_formats_empty_query_tables(headers: tuple[str, ...]) -> None:
+    output = cli._format_responsive_table(headers, [])
+
+    assert headers[0] in output
+    assert "-+-" in output
 
 
 @pytest.mark.parametrize(

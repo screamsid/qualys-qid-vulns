@@ -117,7 +117,7 @@ class QidVulnerabilityListing:
         cls,
         payload: bytes,
         *,
-        requested_qid: int,
+        requested_qid: int | None,
     ) -> "QidVulnerabilityListing":
         try:
             root = ElementTree.fromstring(payload.strip())
@@ -172,7 +172,7 @@ class QidVulnerabilityListing:
                     raise QualysResponseError(
                         "Qualys host vulnerability QID was not a valid integer"
                     ) from exc
-                if qid != requested_qid:
+                if requested_qid is not None and qid != requested_qid:
                     continue
 
                 records.append(

@@ -3,7 +3,7 @@
 qid \- look up a Qualys QID and optionally create a confirmed ignore
 .SH SYNOPSIS
 .B qid
-.I QID
+.RI [ QID ]
 .RB [ OPTIONS ]
 .PP
 .B qid ?
@@ -17,9 +17,10 @@ qid \- look up a Qualys QID and optionally create a confirmed ignore
 .RB \-\-comment COMMENT
 .RB [ \-\-reopen-after-days DAYS ]
 .SH DESCRIPTION
-Queries Qualys host detections for one QID. With no selector, all assets
-returned by Qualys are queried; a selector limits the lookup to a chosen
-scope.
+Queries Qualys host detections for one QID. If QID is omitted, an explicit
+selector is required and all QIDs returned for that device are displayed.
+With a QID and no selector, all assets returned by Qualys are queried; a
+selector limits the lookup to a chosen scope.
 Lookups and ignored-state verification are read-only. Creating an exception
 requires \fB\-\-ignore\fR, an audit comment, and the exact confirmation
 requested by the command.
@@ -33,7 +34,8 @@ not perform local DNS resolution.
 .SH OPTIONS
 .TP
 .BI QID
-Positive Qualys QID to query.
+Optional positive Qualys QID to query. Omit it to list all QIDs for an
+explicit IP, Asset ID, or DNS/hostname selector.
 .TP
 .BI \-\-ips\ IP_FILTER
 Comma-separated IPv4 addresses and/or ranges, for example

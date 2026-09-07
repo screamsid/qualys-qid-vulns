@@ -63,10 +63,12 @@ python3 -m pytest -q
 
 ## Usage
 
-Every invocation requires a QID. With no selector, `qid` queries all assets
-returned by Qualys. Use `qid --help` for the full option list.
+An invocation may include a QID. With no QID, an explicit IP, Asset ID, or
+DNS/hostname selector is required and `qid` lists all QIDs detected on that
+device using the same table format. With a QID and no selector, it queries all
+assets returned by Qualys. Use `qid --help` for the full option list.
 
-Read-only lookup across all assets:
+Read-only lookup for one QID across all assets:
 
 ```bash
 qid 12345
@@ -113,6 +115,17 @@ qid 12345 --asset-ids "100001,100002"
 qid 12345 --hostname "server-one.example.test"
 ```
 
+When the QID is omitted, the selected device's complete returned detection
+list is shown. Each row retains its Asset ID, IP, DNS/hostname, QID, status,
+and Host Vulnerability ID, so different QIDs can be reviewed together.
+
+# List every QID currently returned for one device:
+```bash
+qid --ip "192.0.2.10"
+qid --asset-id 100001
+qid --hostname "server-one.example.test"
+```
+
 Asset and hostname selectors first perform a read-only Qualys Host List lookup,
 then query detections using only the exact IPs returned for matching assets.
 Hostname matching is exact and case-insensitive, with a trailing dot ignored;
@@ -156,6 +169,8 @@ comments.
 
 ## Troubleshooting
 
+- `omitting QID requires an explicit ... selector`: provide `--ips`,
+  `--asset-ids`, or `--dns-hostnames` to list all QIDs for one device.
 - `--ignore requires an explicit ... selector`: provide `--ips`, `--asset-ids`,
   or `--dns-hostnames` before using the state-changing ignore workflow. For a
   read-only estate-wide lookup, omit the selector; ranges use `start-end`
